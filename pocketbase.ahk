@@ -9,7 +9,7 @@ __ObjGet(this, key) {
 }
 Object.Prototype.DefineProp('__Item', {Call: __ObjGet})
 
-class PocketBase {
+class Pocketbase {
     DEBUG := 'DEBUG'
     INFO := 'INFO'
     WARN := 'WARN'
