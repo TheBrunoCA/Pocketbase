@@ -205,6 +205,19 @@ class Pocketbase {
                 }
                 data[key] := value['id']
             }
+            else if value is Array {
+                for index, item in value {
+                    if !item.Has('id') {
+                        this.__log(this.ERROR, 'Array value must have an id')
+                        Throw Error('Array value must have an id', -2)
+                    }
+                    if !item['id'] {
+                        this.__log(this.ERROR, 'Array value id must not be empty')
+                        Throw Error('Array value id must not be empty', -2)
+                    }
+                    value[index] := item['id']
+                }
+            }
         }
         expand := expand ?? ''
         fields := fields ?? ''
