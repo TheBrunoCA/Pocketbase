@@ -24,15 +24,11 @@ class Pocketbase {
      * @param useMap {Boolean} Use Map instead of Object
      * @param logCallback {Function} Callback to log messages
      */
-    __New(host, user, pwd, useMap := true, logCallback := '') {
+    __New(host, useMap := true, logCallback := '') {
         this.host := host
-        this.user := user
-        this.pwd := pwd
         this.useMap := useMap
         this.logCallback := logCallback
         this.__log(this.DEBUG, 'PocketBase instance created')
-        this.Authenticate()
-        this.__log(this.DEBUG, 'PocketBase instance authenticated as ' this.user)
     }
     __log(level, msg) {
         if this.logCallback {
@@ -57,14 +53,7 @@ class Pocketbase {
 
         if !response.Has('token') != 200 {
             this.__log(this.ERROR, 'Error on AuthRefresh')
-            try {
-                this.__log(this.DEBUG, 'Trying to authenticate again')
-                this.Authenticate()
-                this.__log(this.DEBUG, 'Authenticate again done')
-            } catch Error as e {
-                this.__log(this.ERROR, 'Failed to authenticate again')
-                Throw Error(e.Message, -2)
-            }
+            Throw Error('Error on AuthRefresh', -2)
         }
 
         this.token := response['token']
@@ -75,9 +64,9 @@ class Pocketbase {
     /**
      * @description Authenticate the user
      */
-    Authenticate() {
+    Authenticate(user, pwd) {
         this.__log(this.DEBUG, 'Authenticating')
-        body := Map('identity', this.user, 'password', this.pwd)
+        body := Map('identity', user, 'password', pwd)
         this.__log(this.DEBUG, 'Body set')
         url := this.host '/api/collections/users/auth-with-password'
         this.__log(this.DEBUG, 'Requesting ' url)
@@ -204,6 +193,19 @@ class Pocketbase {
      */
     Create(collection, data := Map(), expand?, fields?) {
         this.__log(this.DEBUG, 'Create')
+        for key, value in data {
+            if value is Map {
+                if !value.Has('id') {
+                    this.__log(this.ERROR, 'Map value must have an id')
+                    Throw Error('Map value must have an id', -2)
+                }
+                if !value['id'] {
+                    this.__log(this.ERROR, 'Map value id must not be empty')
+                    Throw Error('Map value id must not be empty', -2)
+                }
+                data[key] := value['id']
+            }
+        }
         expand := expand ?? ''
         fields := fields ?? ''
         query := ''
