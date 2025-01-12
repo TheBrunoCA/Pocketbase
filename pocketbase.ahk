@@ -16,6 +16,14 @@ class Pocketbase {
     ERROR := 'ERROR'
     FATAL := 'FATAL'
 
+    /**
+     * @description Create a new PocketBase instance
+     * @param host {String} Root URL of your PocketBase instance
+     * @param user {String} Email of the user to authenticate
+     * @param pwd {String} Password of the user to authenticate
+     * @param useMap {Boolean} Use Map instead of Object
+     * @param logCallback {Function} Callback to log messages
+     */
     __New(host, user, pwd, useMap := true, logCallback := '') {
         this.host := host
         this.user := user
@@ -31,6 +39,10 @@ class Pocketbase {
             this.logCallback.Call(level, msg)
         }
     }
+
+    /**
+     * @description Refresh the token
+     */
     AuthRefresh() {
         this.__log(this.DEBUG, 'Trying to refresh token')
         if !this.token {
@@ -59,6 +71,10 @@ class Pocketbase {
         this.userRecord := response['record']
         this.__log(this.DEBUG, 'Token set')
     }
+
+    /**
+     * @description Authenticate the user
+     */
     Authenticate() {
         this.__log(this.DEBUG, 'Authenticating')
         body := Map('identity', this.user, 'password', this.pwd)
@@ -80,6 +96,18 @@ class Pocketbase {
         this.userRecord := response['record']
         this.__log(this.DEBUG, 'Token set')
     }
+
+    /**
+     * 
+     * @param collection {String} Name of the collection
+     * @param page {String} Page number
+     * @param perPage {String} Number of items per page
+     * @param sort {String} Columns to sort. Ex: "-created,id" <- DESC created, ASC id
+     * @param filter {String} Filter the results like it were an IF statement. Ex: "created > '2022-01-01'" or "(created = '2022-01-01' AND id > 1)"
+     * @param expand {String} Auto expands record rellations. Ex: "relField1,relField2.subRelField"
+     * @param fields {String} Comma separated list of fields to return. Ex: "id,name,created"
+     * @param skipTotal {String} Skip the total count
+     */
     ListCollection(collection, page?, perPage?, sort?, filter?, expand?, fields?, skipTotal?) {
         this.__log(this.DEBUG, 'ListCollection')
         page := page ?? ''
@@ -130,6 +158,14 @@ class Pocketbase {
         }
         return response
     }
+
+    /**
+     * 
+     * @param collection {String} Name of the collection
+     * @param id {String} Id of the record
+     * @param expand {String} Auto expands record rellations. Ex: "relField1,relField2.subRelField"
+     * @param fields {String} Comma separated list of fields to return. Ex: "id,name,created"
+     */
     GetById(collection, id, expand?, fields?) {
         this.__log(this.DEBUG, 'GetById')
         expand := expand ?? ''
@@ -158,6 +194,14 @@ class Pocketbase {
         } 
         return response
     }
+
+    /**
+     * 
+     * @param collection {String} Name of the collection
+     * @param data {Map} Data to create
+     * @param expand {String} Auto expands record rellations. Ex: "relField1,relField2.subRelField"
+     * @param fields {String} Comma separated list of fields to return. Ex: "id,name,created"
+     */
     Create(collection, data := Map(), expand?, fields?) {
         this.__log(this.DEBUG, 'Create')
         expand := expand ?? ''
@@ -186,6 +230,15 @@ class Pocketbase {
         } 
         return response
     }
+
+    /**
+     * 
+     * @param collection {String} Name of the collection
+     * @param id {String} Id of the record
+     * @param data {Map} Data to update
+     * @param expand {String} Auto expands record rellations. Ex: "relField1,relField2.subRelField"
+     * @param fields {String} Comma separated list of fields to return. Ex: "id,name,created"
+     */
     Update(collection, id, data := Map(), expand?, fields?) {
         this.__log(this.DEBUG, 'Update')
         expand := expand ?? ''
@@ -214,6 +267,12 @@ class Pocketbase {
         } 
         return response
     }
+
+    /**
+     * 
+     * @param collection {String} Name of the collection
+     * @param id {String} Id of the record
+     */
     Delete(collection, id) {
         this.__log(this.DEBUG, 'Delete')
         url := this.host '/api/collections/' collection '/records/' id
