@@ -1,5 +1,4 @@
 #Requires AutoHotkey v2.0
-
 __ObjHas(this, key) {
     return this.HasOwnProp(key)
 }
@@ -8,333 +7,279 @@ __ObjGet(this, key) {
     return this.GetOwnPropDesc(key).Value
 }
 Object.Prototype.DefineProp('__Item', {Call: __ObjGet})
+__defprop := {}.DefineProp
+__JsonToMap(this) {
+    return __JSON.parse(this)
+}
+__defprop(''.Base, 'JsonToMap', {Call: __JsonToMap})
+__JsonToObj(this) {
+    return __JSON.parse(this,,false)
+}
+__defprop(''.Base, 'JsonToObj', {Call: __JsonToObj})
 
-class Pocketbase {
-    DEBUG := 'DEBUG'
-    INFO := 'INFO'
-    WARN := 'WARN'
-    ERROR := 'ERROR'
-    FATAL := 'FATAL'
 
-    /**
-     * @description Create a new PocketBase instance
-     * @param host {String} Root URL of your PocketBase instance
-     * @param user {String} Email of the user to authenticate
-     * @param pwd {String} Password of the user to authenticate
-     * @param useMap {Boolean} Use Map instead of Object
-     * @param logCallback {Function} Callback to log messages
-     */
-    __New(host, useMap := true, logCallback := '') {
+Class Pocketbase {
+    host := 'https://pocketbase.io'
+    userAuthStore := ''
+    __New(host) {
         this.host := host
-        this.useMap := useMap
-        this.logCallback := logCallback
-        this.__log(this.DEBUG, 'PocketBase instance created')
-    }
-    __log(level, msg) {
-        if this.logCallback {
-            this.logCallback.Call(level, msg)
-        }
     }
 
-    /**
-     * @description Refresh the token
-     */
-    AuthRefresh() {
-        this.__log(this.DEBUG, 'Trying to refresh token')
-        if !this.token {
-            this.__log(this.ERROR, 'Token not set. Authenticate first')
-            Throw Error('Token not set', -2)
-        }
-        headers := Map('Authorization', this.token)
-        this.__log(this.DEBUG, 'Headers set')
-        url := this.host '/api/collections/users/auth-refresh'
-        this.__log(this.DEBUG, 'Requesting ' url)
-        response := __JSON.parse(this.__Request(url, 'POST', headers),, this.useMap)
-
-        if !response.Has('token') != 200 {
-            this.__log(this.ERROR, 'Error on AuthRefresh')
-            Throw Error('Error on AuthRefresh', -2)
-        }
-
-        this.token := response['token']
-        this.userRecord := response['record']
-        this.__log(this.DEBUG, 'Token set')
-    }
-
-    /**
-     * @description Authenticate the user
-     */
-    Authenticate(user, pwd) {
-        this.__log(this.DEBUG, 'Authenticating')
-        body := Map('identity', user, 'password', pwd)
-        this.__log(this.DEBUG, 'Body set')
-        url := this.host '/api/collections/users/auth-with-password'
-        this.__log(this.DEBUG, 'Requesting ' url)
-        response := __JSON.parse(this.__Request(url, 'POST',, body),, this.useMap)
-        
-        if response.Has('status') and response['status'] == 404 {
-            this.__log(this.ERROR, 'Code 404 Not Found. Host: ' url)
-            Throw Error('Code 404 Not Found. Host: ' url, -2)
-        }
-        if response.Has('status') and response['status'] == 400 {
-            this.__log(this.ERROR, 'Code 400. ' response['message'])
-            Throw Error('Code 400. ' response['message'], -2)
-        }
-
-        this.token := response['token']
-        this.userRecord := response['record']
-        this.__log(this.DEBUG, 'Token set')
-    }
-
-    /**
-     * 
-     * @param collection {String} Name of the collection
-     * @param page {String} Page number
-     * @param perPage {String} Number of items per page
-     * @param sort {String} Columns to sort. Ex: "-created,id" <- DESC created, ASC id
-     * @param filter {String} Filter the results like it were an IF statement. Ex: "created > '2022-01-01'" or "(created = '2022-01-01' AND id > 1)"
-     * @param expand {String} Auto expands record rellations. Ex: "relField1,relField2.subRelField"
-     * @param fields {String} Comma separated list of fields to return. Ex: "id,name,created"
-     * @param skipTotal {String} Skip the total count
-     */
-    ListCollection(collection, page?, perPage?, sort?, filter?, expand?, fields?, skipTotal?) {
-        this.__log(this.DEBUG, 'ListCollection')
-        page := page ?? ''
-        perPage := perPage ?? ''
-        sort := sort ?? ''
-        filter := filter ?? ''
-        expand := expand ?? ''
-        fields := fields ?? ''
-        skipTotal := skipTotal ?? ''
-
-        query := ''
-        if page != '' {
-            query .= '?page=' page
-        }
-        if perPage != '' {
-            query .= '?perPage=' perPage
-        }
-        if sort != '' {
-            query .= '?sort=' sort
-        }
-        if filter != '' {
-            query .= '?filter=' filter
-        }
-        if expand != '' {
-            query .= '?expand=' expand
-        }
-        if fields != '' {
-            query .= '?fields=' fields
-        }
-        if skipTotal != '' {
-            query .= '?skipTotal=' skipTotal
-        }
-        url := this.host '/api/collections/' collection '/records' query
-        this.__log(this.DEBUG, 'Requesting ' url)
-        response := __JSON.parse(this.__Request(url, 'GET', Map('Authorization', this.token)),, this.useMap)
-
-        if !response.Has('items') {
-            this.__log(this.ERROR, 'Error on ListCollection')
-            try {
-                this.__log(this.DEBUG, 'Trying to authenticate again')
-                this.AuthRefresh()
-                response := __JSON.parse(this.__Request(url, 'GET', Map('Authorization', this.token)),, this.useMap)
-                this.__log(this.DEBUG, 'Authenticate again done')
-            } catch Error as e {
-                this.__log(this.ERROR, 'Failed to authenticate again')
-                Throw Error('Code ' response['status'] ' ' response.Has('message') ? response['message'] : '', -2)
+    Class AuthStore {
+        token := ''
+        userRecord := ''
+        isValid {
+            get {
+                ; TODO
             }
         }
-        return response
+        __New(token, userRecord) {
+            this.token := token
+            this.userRecord := userRecord
+        }
     }
-
-    /**
-     * 
-     * @param collection {String} Name of the collection
-     * @param id {String} Id of the record
-     * @param expand {String} Auto expands record rellations. Ex: "relField1,relField2.subRelField"
-     * @param fields {String} Comma separated list of fields to return. Ex: "id,name,created"
-     */
-    GetById(collection, id, expand?, fields?) {
-        this.__log(this.DEBUG, 'GetById')
-        expand := expand ?? ''
-        fields := fields ?? ''
-        query := ''
-        if expand != '' {
-            query .= '?expand=' expand
+    Class Record {
+        id := ''
+        collectionId := ''
+        collectionName := ''
+        created := ''
+        updated := ''
+    }
+    Class Collection {
+        id := ''
+        name := ''
+        page := ''
+        perPage := ''
+        totalPages := ''
+        totalRecords := ''
+        records := []
+    }
+    Class Response {
+        responseBody := Map()
+        status := 0
+        success := false 
+        statusText := ''
+        headers := ''
+        __New(responseBody, status, statusText, headers) {
+            this.responseBody := responseBody
+            this.status := status
+            this.statusText := statusText
+            this.headers := headers
         }
-        if fields != '' {
-            query .= '?fields=' fields
+        static FromResponse(response) {
+            this.responseBody := response.responseText.JsonToObj()
+            this.status := response.status
+            this.success := response.status >= 200 && response.status < 300
+            this.statusText := response.statusText
+            this.headers := response.GetAllResponseHeaders()
+            return this
         }
-        url := this.host '/api/collections/' collection '/records/' id query
-        this.__log(this.DEBUG, 'Requesting ' url)
-        response := __JSON.parse(this.__Request(url, 'GET', Map('Authorization', this.token)),, this.useMap)
-        if !response.Has('collectionId') {
-            this.__log(this.ERROR, 'Error on GetById')
-            try {
-                this.__log(this.DEBUG, 'Trying to authenticate again')
-                this.AuthRefresh()
-                response := __JSON.parse(this.__Request(url, 'GET', Map('Authorization', this.token)),, this.useMap)
-                this.__log(this.DEBUG, 'Authenticate again done')
-            } catch Error as e {
-                this.__log(this.ERROR, 'Failed to authenticate again')
-                Throw Error('Code ' response['status'] ' ' response.Has('message') ? response['message'] : '', -2)
+    }
+    Class HttpRequest {
+        http := ''
+        url := ''
+        method := ''
+        body := ''
+        waitReturn := true
+        timeoutSeconds := 30
+        __New(url, method, waitReturn := true) {
+            this.http := ComObject("WinHttp.WinHttpRequest.5.1")
+            this.url := url
+            this.method := method
+            this.waitReturn := waitReturn
+            this.http.Open(this.method, this.url, this.waitReturn)
+        }
+        __Delete() {
+            this.http := ''
+            this.url := ''
+            this.method := ''
+            this.body := ''
+            this.waitReturn := ''
+            this.timeoutSeconds := ''
+        }
+        SetBody(body) {
+            if Type(body) == 'String' {
+                this.body := body
+                return this
             }
-        } 
-        return response
-    }
-
-    /**
-     * 
-     * @param collection {String} Name of the collection
-     * @param data {Map} Data to create
-     * @param expand {String} Auto expands record rellations. Ex: "relField1,relField2.subRelField"
-     * @param fields {String} Comma separated list of fields to return. Ex: "id,name,created"
-     */
-    Create(collection, data := Map(), expand?, fields?) {
-        this.__log(this.DEBUG, 'Create')
-        for key, value in data {
-            if value is Map {
-                if !value.Has('id') {
-                    this.__log(this.ERROR, 'Map value must have an id')
-                    Throw Error('Map value must have an id', -2)
+            if Type(body) == 'Object' or Type(body) == 'Map' {
+                this.body := __JSON.stringify(body)
+                return this
+            }
+            Throw Error('Invalid body type')
+        }
+        SetHeaders(headers) {
+            if Type(headers) == 'Object' {
+                for prop, value in headers.OwnProps() {
+                    this.http.SetRequestHeader(prop, value)
                 }
-                if !value['id'] {
-                    this.__log(this.ERROR, 'Map value id must not be empty')
-                    Throw Error('Map value id must not be empty', -2)
+                return this
+            }
+            if Type(headers) == 'String' {
+                this.http.SetRequestHeader(headers)
+                return this
+            }
+            if Type(headers) == 'Map' {
+                for key, value in headers {
+                    this.http.SetRequestHeader(key, value)
                 }
-                data[key] := value['id']
+                return this
             }
-            else if value is Array {
-                for index, item in value {
-                    if !item.Has('id') {
-                        this.__log(this.ERROR, 'Array value must have an id')
-                        Throw Error('Array value must have an id', -2)
-                    }
-                    if !item['id'] {
-                        this.__log(this.ERROR, 'Array value id must not be empty')
-                        Throw Error('Array value id must not be empty', -2)
-                    }
-                    value[index] := item['id']
-                }
+            Throw Error('Invalid headers type')
+        }
+        Timeout(seconds) {
+            this.timeoutSeconds := seconds
+            return this
+        }
+        Send() {
+            this.http.Send(this.body)
+            if this.waitReturn {
+                this.http.WaitForResponse(this.timeoutSeconds * 1000)
+                result := Pocketbase.Response.FromResponse(this.http)
+                return result
             }
         }
-        expand := expand ?? ''
-        fields := fields ?? ''
-        query := ''
-        if expand != '' {
-            query .= '?expand=' expand
-        }
-        if fields != '' {
-            query .= '?fields=' fields
-        }
-        url := this.host '/api/collections/' collection '/records' query
-        this.__log(this.DEBUG, 'Requesting ' url)
-        response := __JSON.parse(this.__Request(url, 'POST', Map('Authorization', this.token), data),, this.useMap)
-        if !response.Has('collectionId') {
-            this.__log(this.ERROR, 'Error on Create')
-            try {
-                this.__log(this.DEBUG, 'Trying to authenticate again')
-                this.AuthRefresh()
-                response := __JSON.parse(this.__Request(url, 'POST', Map('Authorization', this.token), data),, this.useMap)
-                this.__log(this.DEBUG, 'Authenticate again done')
-            } catch Error as e {
-                this.__log(this.ERROR, 'Failed to authenticate again')
-                Throw Error('Code ' response['status'] ' ' response.Has('message') ? response['message'] : '', -2)
-            }
-        } 
-        return response
     }
 
-    /**
-     * 
-     * @param collection {String} Name of the collection
-     * @param id {String} Id of the record
-     * @param data {Map} Data to update
-     * @param expand {String} Auto expands record rellations. Ex: "relField1,relField2.subRelField"
-     * @param fields {String} Comma separated list of fields to return. Ex: "id,name,created"
-     */
-    Update(collection, id, data := Map(), expand?, fields?) {
-        this.__log(this.DEBUG, 'Update')
-        expand := expand ?? ''
-        fields := fields ?? ''
-        query := ''
-        if expand != '' {
-            query .= '?expand=' expand
+    AuthWithPassword(identity, password, expand := '', fields := '') {
+        query := expand ? '?expand=' expand : ''
+        query .= fields ? '?fields=' fields : ''
+        url := this.host '/api/collections/users/auth-with-password' query
+        http := Pocketbase.HttpRequest(url, 'POST')
+        http.SetBody({
+            identity: identity,
+            password: password
+        })
+        http.SetHeaders(Map(
+            'Content-Type', 'application/json'
+        ))
+        http.Timeout(30)
+        result := http.Send()
+        http := ''
+        if result.success {
+            this.userAuthStore := Pocketbase.AuthStore(result.responseBody.token, result.responseBody.record)
         }
-        if fields != '' {
-            query .= '?fields=' fields
-        }
-        url := this.host '/api/collections/' collection '/records/' id query
-        this.__log(this.DEBUG, 'Requesting ' url)
-        response := __JSON.parse(this.__Request(url, 'PATCH', Map('Authorization', this.token), data),, this.useMap)
-        if !response.Has('collectionId') {
-            this.__log(this.ERROR, 'Error on Update')
-            try {
-                this.__log(this.DEBUG, 'Trying to authenticate again')
-                this.AuthRefresh()
-                response := __JSON.parse(this.__Request(url, 'PATCH', Map('Authorization', this.token), data),, this.useMap)
-                this.__log(this.DEBUG, 'Authenticate again done')
-            } catch Error as e {
-                this.__log(this.ERROR, 'Failed to authenticate again')
-                Throw Error('Code ' response['status'] ' ' response.Has('message') ? response['message'] : '', -2)
-            }
-        } 
-        return response
+        return result
     }
 
-    /**
-     * 
-     * @param collection {String} Name of the collection
-     * @param id {String} Id of the record
-     */
-    Delete(collection, id) {
-        this.__log(this.DEBUG, 'Delete')
+    AuthRefresh(expand := '', fields := '') {
+        if not this.userAuthStore.token {
+            Throw Error('Token not set. Authenticate first', -2)
+        }
+        query := expand ? '?expand=' expand : ''
+        query .= fields ? '?fields=' fields : ''
+        url := this.host '/api/collections/users/auth-refresh' query
+        http := Pocketbase.HttpRequest(url, 'POST')
+        http.SetHeaders(Map(
+            'Authorization', this.userAuthStore.token,
+            'Content-Type', 'application/json'
+        ))
+        http.Timeout(30)
+        result := http.Send()
+        http := ''
+        if result.success {
+            this.userAuthStore := Pocketbase.AuthStore(result.responseBody.token, result.responseBody.record)
+        }
+        return result
+    }
+
+    ListRecords(collection, page := '', perPage := '', sort := '', filter := '', expand := '', fields := '', skipTotal := '') {
+        url := this.host '/api/collections/' collection '/records'
+        query := page ? '?page=' page : ''
+        query .= perPage ? '?perPage=' perPage : ''
+        query .= sort ? '?sort=' sort : ''
+        query .= filter ? '?filter=' filter : ''
+        query .= expand ? '?expand=' expand : ''
+        query .= fields ? '?fields=' fields : ''
+        query .= skipTotal ? '?skipTotal=' skipTotal : ''
+        url := url query
+        http := Pocketbase.HttpRequest(url, 'GET')
+        http.SetHeaders(Map(
+            'Authorization', this.userAuthStore.token,
+            'Content-Type', 'application/json'
+        ))
+        http.Timeout(30)
+        result := http.Send()
+        http := ''
+        if result.success {
+            return result.responseBody
+        }
+        throw Error('Error on ListRecords. ' result.statusText, -2)
+    }
+
+    GetRecord(collection, id, expand := '', fields := '') {
         url := this.host '/api/collections/' collection '/records/' id
-        this.__log(this.DEBUG, 'Requesting ' url)
-        response := __JSON.parse(this.__Request(url, 'DELETE', Map('Authorization', this.token)),, this.useMap)
-        if response.Has('code') {
-            this.__log(this.ERROR, 'Error on Delete')
-            try {
-                this.__log(this.DEBUG, 'Trying to authenticate again')
-                this.AuthRefresh()
-                response := __JSON.parse(this.__Request(url, 'DELETE', Map('Authorization', this.token)),, this.useMap)
-                this.__log(this.DEBUG, 'Authenticate again done')
-            } catch Error as e {
-                this.__log(this.ERROR, 'Failed to authenticate again')
-                Throw Error('Code ' response['status'] ' ' response.Has('message') ? response['message'] : '', -2)
-            }
-        } 
-        return response
+        query := expand ? '?expand=' expand : ''
+        query .= fields ? '?fields=' fields : ''
+        url := url query
+        http := Pocketbase.HttpRequest(url, 'GET')
+        http.SetHeaders(Map(
+            'Authorization', this.userAuthStore.token,
+            'Content-Type', 'application/json'
+        ))
+        http.Timeout(30)
+        result := http.Send()
+        http := ''
+        if result.success {
+            return result.responseBody
+        }
+        throw Error('Error on GetRecord. ' result.statusText, -2)
     }
-    /*
-    ListCollections() {
-        headers := Map('Authorization', this.token)
-        url := this.host '/api/collections'
-        response := __JSON.parse(this.__Request(url, 'GET', headers))
-        if !response.Has('status') or !response.Has('message') {
-            Throw Error('Error on list collections', -2)
+
+    CreateRecord(collection, &data, expand := '', fields := '') {
+        url := this.host '/api/collections/' collection '/records'
+        query := expand ? '?expand=' expand : ''
+        query .= fields ? '?fields=' fields : ''
+        url := url query
+        http := Pocketbase.HttpRequest(url, 'POST')
+        http.SetHeaders(Map(
+            'Authorization', this.userAuthStore.token,
+            'Content-Type', 'application/json'
+        ))
+        http.SetBody(data)
+        http.Timeout(30)
+        result := http.Send()
+        http := ''
+        if result.success {
+            return data := result.responseBody
         }
-        if response['status'] != 200 {
-            Throw Error('Code ' response['status'] . ' ' response['message'], -2)
-        }
-        return response
+        throw Error('Error on CreateRecord. ' result.statusText, -2)
     }
-    */
 
-    __Request(url, method := 'POST', headers := Map(), body := Map(), contentType := 'application/json') {
-        req := ComObject('WinHttp.WinHttpRequest.5.1')
-        req.Open(method, url, true)
-        req.SetRequestHeader('Content-Type', contentType)
-
-        for header, value in headers {
-            req.SetRequestHeader(header, value)
+    UpdateRecord(collection, &data, expand := '', fields := '') {
+        url := this.host '/api/collections/' collection '/records/' data.id
+        query := expand ? '?expand=' expand : ''
+        query .= fields ? '?fields=' fields : ''
+        url := url query
+        http := Pocketbase.HttpRequest(url, 'PATCH')
+        http.SetHeaders(Map(
+            'Authorization', this.userAuthStore.token,
+            'Content-Type', 'application/json'
+        ))
+        http.SetBody(data)
+        http.Timeout(30)
+        result := http.Send()
+        http := ''
+        if result.success {
+            return data := result.responseBody
         }
-        
-        body := __JSON.stringify(body)
-        req.Send(body)
-        req.WaitForResponse()
-        return req.ResponseText
+        throw Error('Error on UpdateRecord. ' result.statusText, -2)
+    }
+
+    DeleteRecord(collection, id) {
+        url := this.host '/api/collections/' collection '/records/' id
+        http := Pocketbase.HttpRequest(url, 'DELETE')
+        http.SetHeaders(Map(
+            'Authorization', this.userAuthStore.token,
+            'Content-Type', 'application/json'
+        ))
+        http.Timeout(30)
+        result := http.Send()
+        http := ''
+        if result.success {
+            return true
+        }
+        throw Error('Error on DeleteRecord. ' result.statusText, -2)
     }
 }
 
