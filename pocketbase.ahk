@@ -208,6 +208,7 @@ class Pocketbase {
         __New(url, method) {
             this.url := url
             this.method := method
+            this.body := ''
             this.http := ComObject("WinHttp.WinHttpRequest.5.1")
             this.http.Open(this.method, this.url)
         }
@@ -234,25 +235,25 @@ class Pocketbase {
             if Type(headers) == 'Object' {
                 for prop, value in headers.OwnProps() {
                     this.http.SetRequestHeader(prop, value)
-                    return this
                 }
+                return this
             }
             if Type(headers) == 'Map' {
                 for key, value in headers {
                     this.http.SetRequestHeader(key, value)
-                    return this
                 }
+                return this
             }
             throw Error('Invalid headers type')
         }
         Send(timeoutSeconds := 30) {
-            this.http.Send(this.body ?? '')
+            this.http.Send(this.body)
             this.http.WaitForResponse(timeoutSeconds * 1000)
             response := Pocketbase.HttpResponse.FromResponse(this.http)
             return response
         }
         JustSend() {
-            this.http.Send(this.body ?? '')
+            this.http.Send(this.body)
             return this.http
         }
     }
@@ -271,6 +272,8 @@ class Pocketbase {
     }
     __New(host) {
         this.host := host
+        this._collection := ''
+        this._userAuthStore := Pocketbase.AuthStore('', '')
     }
     AuthWithPassword(identity, password, expand := '', fields := '') {
         query := expand ? '?expand=' expand : ''
@@ -284,15 +287,15 @@ class Pocketbase {
         http.SetHeaders(Map(
             'Content-Type', 'application/json'
         ))
-        http.Send()
-        if http.success {
-            this.userAuthStore := Pocketbase.AuthStore(http.responseBody.token, http.responseBody.record)
+        response := http.Send()
+        if response.success {
+            this.userAuthStore := Pocketbase.AuthStore(response.responseBody.token, response.responseBody.record)
             return true
         }
-        Throw Error(http.statusText ' ' http.status ' ' http.responseBody.message, -2)
+        Throw Error(response.statusText ' ' response.status ' ' response.responseBody.message, -2)
     }
     RefreshToken(expand := '', fields := '') {
-        if (this.userAuthStore.token ?? '') {
+        if not this.userAuthStore.token {
             throw Error('Token not set. Authenticate first', -2)
         }
         query := expand ? '?expand=' expand : ''
@@ -303,22 +306,22 @@ class Pocketbase {
             'Authorization', this.userAuthStore.token,
             'Content-Type', 'application/json'
         ))
-        http.Send()
-        if http.success {
-            this.userAuthStore := Pocketbase.AuthStore(http.responseBody.token, http.responseBody.record)
+        response := http.Send()
+        if response.success {
+            this.userAuthStore := Pocketbase.AuthStore(response.responseBody.token, response.responseBody.record)
             return true
         }
-        Throw Error(http.statusText ' ' http.status ' ' http.responseBody.message, -2)
+        Throw Error(response.statusText ' ' response.status ' ' response.responseBody.message, -2)
     }
     Collection(collection) {
-        this.collection := collection
+        this._collection := collection
         return this
     }
     List(page := '', perPage := '', sort := '', filter := '', expand := '', fields := '', skipTotal := '') {
-        if not (this.Collection ?? '') {
+        if not this._collection {
             Throw Error('Collection not set. Call Collection(collection) first', -2)
         }
-        url := this.host '/api/collections/' this.collection '/records'
+        url := this.host '/api/collections/' this._collection '/records'
         query := page ? '?page=' page : ''
         query .= perPage ? '?perPage=' perPage : ''
         query .= sort ? '?sort=' sort : ''
@@ -332,17 +335,17 @@ class Pocketbase {
             'Authorization', this.userAuthStore.token,
             'Content-Type', 'application/json'
         ))
-        http.Send()
-        if http.success {
-            return http.responseBody
+        response := http.Send()
+        if response.success {
+            return response.responseBody
         }
-        Throw Error(http.statusText ' ' http.status ' ' http.responseBody.message, -2)
+        Throw Error(response.statusText ' ' response.status ' ' response.responseBody.message, -2)
     }
     Get(id, expand := '', fields := '') {
-        if not (this.Collection ?? '') {
+        if not this._collection {
             Throw Error('Collection not set. Call Collection(collection) first', -2)
         }
-        url := this.host '/api/collections/' this.collection '/records/' id
+        url := this.host '/api/collections/' this._collection '/records/' id
         query := expand ? '?expand=' expand : ''
         query .= fields ? '?fields=' fields : ''
         url := url query
@@ -351,40 +354,41 @@ class Pocketbase {
             'Authorization', this.userAuthStore.token,
             'Content-Type', 'application/json'
         ))
-        http.Send()
-        if http.success {
-            return http.responseBody
+        response := http.Send()
+        if response.success {
+            return response.responseBody
         }
-        Throw Error(http.statusText ' ' http.status ' ' http.responseBody.message, -2)
+        Throw Error(response.statusText ' ' response.status ' ' response.responseBody.message, -2)
     }
     Create(data, expand := '', fields := '') {
-        if not (this.Collection ?? '') {
+        if not this._collection {
             Throw Error('Collection not set. Call Collection(collection) first', -2)
         }
-        if (data.id ?? '') {
+        if data.HasOwnProp('id') and data.id {
             Throw Error('Create requires data.id to be empty', -2)
         }
-        url := this.host '/api/collections/' this.collection '/records'
+        data.id := ''
+        url := this.host '/api/collections/' this._collection '/records'
         http := Pocketbase.HttpRequest(url, 'POST')
         http.SetHeaders(Map(
             'Authorization', this.userAuthStore.token,
             'Content-Type', 'application/json'
         ))
         http.SetBody(data)
-        http.Send()
-        if http.success {
-            return data := http.responseBody
+        response := http.Send()
+        if response.success {
+            return data := response.responseBody
         }
-        Throw Error(http.statusText ' ' http.status ' ' http.responseBody.message, -2)
+        Throw Error(response.statusText ' ' response.status ' ' response.responseBody.message, -2)
     }
     Update(data, expand := '', fields := '') {
-        if not (this.Collection ?? '') {
+        if not this._collection {
             Throw Error('Collection not set. Call Collection(collection) first', -2)
         }
-        if not (data.id ?? '') {
+        if not data.HasOwnProp('id') or not data.id {
             Throw Error('Update requires data.id to be set', -2)
         }
-        url := this.host '/api/collections/' this.collection '/records/' data.id
+        url := this.host '/api/collections/' this._collection '/records/' data.id
         query := expand ? '?expand=' expand : ''
         query .= fields ? '?fields=' fields : ''
         url := url query
@@ -394,26 +398,26 @@ class Pocketbase {
             'Content-Type', 'application/json'
         ))
         http.SetBody(data)
-        http.Send()
-        if http.success {
-            return data := http.responseBody
+        response := http.Send()
+        if response.success {
+            return data := response.responseBody
         }
-        Throw Error(http.statusText ' ' http.status ' ' http.responseBody.message, -2)
+        Throw Error(response.statusText ' ' response.status ' ' response.responseBody.message, -2)
     }
     Delete(id) {
-        if not (this.Collection ?? '') {
+        if not this._collection {
             Throw Error('Collection not set. Call Collection(collection) first', -2)
         }
-        url := this.host '/api/collections/' this.collection '/records/' id
+        url := this.host '/api/collections/' this._collection '/records/' id
         http := Pocketbase.HttpRequest(url, 'DELETE')
         http.SetHeaders(Map(
             'Authorization', this.userAuthStore.token,
             'Content-Type', 'application/json'
         ))
-        http.Send()
-        if http.success {
+        response := http.Send()
+        if response.success {
             return true
         }
-        Throw Error(http.statusText ' ' http.status ' ' http.responseBody.message, -2)
+        Throw Error(response.statusText ' ' response.status ' ' response.responseBody.message, -2)
     }
 }
